@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teacher Dashboard</title>
+    <style>
+        body {
+            font-family: Arial;
+            background: #f5f6fa;
+            text-align: center;
+        }
+
+        .container {
+            margin-top: 50px;
+        }
+
+        h2 {
+            color: #2f3640;
+        }
+
+        button {
+            padding: 12px 20px;
+            margin: 10px;
+            border: none;
+            border-radius: 8px;
+            background: #4cd137;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #44bd32;
+        }
+
+        #timer {
+            margin-top: 20px;
+            font-size: 20px;
+            font-weight: bold;
+            color: #e84118;
+        }
+
+        .qr-box {
+            margin-top: 30px;
+        }
+
+        img {
+            width: 250px;
+            border: 4px solid #dcdde1;
+            border-radius: 10px;
+            padding: 10px;
+            background: white;
+        }
+
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            width: 400px;
+            margin: auto;
+            box-shadow: 0px 5px 15px rgba(0,0,0,0.1);
+        }
+
+        #studentTable {
+            margin-top: 20px;
+            width: 100%;
+            border-collapse: collapse;
+            display: none;
+        }
+
+        #studentTable th, #studentTable td {
+            border: 1px solid #dcdde1;
+            padding: 8px 12px;
+            text-align: left;
+        }
+
+        #studentTable th {
+            background: #4cd137;
+            color: white;
+        }
+
+        #studentTable tr:nth-child(even) {
+            background: #f5f6fa;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+    <div class="card">
+
+        <h2>📊 Teacher Dashboard</h2>
+
+        <button onclick="startSession()">Start Session</button>
+        <button onclick="viewStudents()">View Students</button>
+        <button onclick="exportData()">Export Attendance</button>
+
+        <div id="timer">Session not started</div>
+
+        <div class="qr-box">
+            <img id="qrImage" style="display:none;">
+        </div>
+
+        <table id="studentTable">
+            <thead>
+                <tr>
+                    <th>Student ID</th>
+                    <th>Name</th>
+                    <th>Class</th>
+                    <th>Section</th>
+                </tr>
+            </thead>
+            <tbody id="studentTableBody"></tbody>
+        </table>
+
+    </div>
+</div>
+
+<script>
+function startSession() {
+    fetch('/start-session')
+    .then(res => res.json())
+    .then(data => {
+
+        const qr = document.getElementById("qrImage");
+        qr.src = "/" + data.qr_code + "?t=" + new Date().getTime(); // cache bust
+        qr.style.display = "block";
+
+        // hide student table if visible
+        document.getElementById("studentTable").style.display = "none";
+
+        let expiryTime = new Date(data.expires_at);
+
+        if (isNaN(expiryTime.getTime())) {
+            document.getElementById("timer").innerHTML = "Timer error ❌";
+            return;
+        }
+
+        let expiry = expiryTime.getTime();
+
+        let x = setInterval(function () {
+            let now = new Date().getTime();
+            let distance = expiry - now;
+
+            if (distance <= 0) {
+                clearInterval(x);
+                document.getElementById("timer").innerHTML = "QR EXPIRED ❌";
+                return;
+            }
+
+            let minutes = Math.floor(distance / 60000);
+            let seconds = Math.floor((distance % 60000) / 1000);
+
+            document.getElementById("timer").innerHTML =
+                `QR expires in: ${minutes}m ${seconds}s`;
+
+        }, 1000);
+    });
+}
+
+function viewStudents() {
+    fetch('/students')
+    .then(res => res.json())
+    .then(data => {
+        const tbody = document.getElementById("studentTableBody");
+        tbody.innerHTML = "";
+
+        if (data.length === 0) {
+            tbody.innerHTML = "<tr><td colspan='4'>No students found</td></tr>";
+        } else {
+            data.forEach(s => {
+                tbody.innerHTML += `<tr>
+                    <td>${s.student_id}</td>
+                    <td>${s.name}</td>
+                    <td>${s.class}</td>
+                    <td>${s.section}</td>
+                </tr>`;
+            });
+        }
+
+        document.getElementById("studentTable").style.display = "table";
+        document.getElementById("qrImage").style.display = "none";
+    })
+    .catch(err => {
+        alert("Failed to load students ❌");
+    });
+}
+
+function exportData() {
+    window.location.href = "/export";
+}
+</script>
+
+</body>
+</html>

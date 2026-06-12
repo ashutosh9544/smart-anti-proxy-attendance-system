@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Attendance</title>
+    <style>
+        body {
+            font-family: Arial;
+            text-align: center;
+            margin-top: 100px;
+        }
+        input {
+            padding: 10px;
+            font-size: 18px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 18px;
+            background: green;
+            color: white;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Scan Successful ✅</h2>
+<p>Enter your Student ID</p>
+
+<form id="form">
+    <input type="text" id="student_id" placeholder="Student ID" required>
+    <br><br>
+    <button type="submit">Mark Attendance</button>
+</form>
+<form method="POST">
+    <input type="hidden" name="token" value="{{ token }}">
+    <input type="text" name="student_id" placeholder="Enter ID">
+    <button type="submit">Submit</button>
+</form>
+
+<p id="result"></p>
+
+<script>
+const token = new URLSearchParams(window.location.search).get("token");
+
+document.getElementById("form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const student_id = document.getElementById("student_id").value;
+
+    const res = await fetch("/mark-attendance", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ student_id, token })
+    });
+
+    const data = await res.json();
+    document.getElementById("result").innerText = data.message || data.error;
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Attendance System</title>
+    <style>
+        body {
+            font-family: Arial;
+            text-align: center;
+            margin-top: 100px;
+        }
+        button {
+            padding: 20px 40px;
+            margin: 20px;
+            font-size: 18px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        .teacher {
+            background-color: #007bff;
+            color: white;
+        }
+        .student {
+            background-color: #28a745;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Smart Attendance System</h1>
+
+<button class="teacher" onclick="goTeacher()">I am Teacher</button>
+<button class="student" onclick="goStudent()">I am Student</button>
+
+<script>
+function goTeacher() {
+    window.location.href = "/dashboard";
+}
+
+function goStudent() {
+    window.location.href = "/student";
+}
+</script>
+
+</body>
+</html>
