@@ -1,0 +1,11 @@
+qr_version
+pin_correct
+typing_time
+scan_to_submit_time
+duplicate_hash
+duplicate_ip
+duplicate_browser
+duplicate_device
+duplicate_session
+gps_accuracy
+distance_from_campus

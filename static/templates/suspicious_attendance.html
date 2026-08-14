@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Suspicious Attendance</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f6fa;
+            margin: 0;
+            padding: 30px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: auto;
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+        }
+
+        h2 {
+            margin-top: 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th, td {
+            padding: 12px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+
+        th {
+            background: #f1f2f6;
+        }
+
+        .risk {
+            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+
+        .high {
+            background: #ffcccc;
+            color: #c0392b;
+        }
+
+        .medium {
+            background: #ffeaa7;
+            color: #8e6c00;
+        }
+
+        .normal {
+            background: #d5f5e3;
+            color: #218c5a;
+        }
+
+        .resolved {
+            color: #218c5a;
+            font-weight: bold;
+        }
+
+        .unresolved {
+            color: #c0392b;
+            font-weight: bold;
+        }
+
+        .back {
+            display: inline-block;
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            background: #4073ff;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <a href="/dashboard" class="back">← Dashboard</a>
+
+    <h2>⚠️ Suspicious Attendance</h2>
+
+    {% if not events %}
+
+        <p>No suspicious attendance detected.</p>
+
+    {% else %}
+
+    <table>
+
+        <thead>
+            <tr>
+                <th>Student ID</th>
+                <th>Session</th>
+                <th>Risk Score</th>
+                <th>Risk Level</th>
+                <th>Reason</th>
+                <th>Time</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+
+        <tbody>
+
+        {% for event in events %}
+
+            <tr>
+
+                <td>
+                    {{ event.student_id }}
+                </td>
+
+                <td>
+                    #{{ event.session_id }}
+                </td>
+
+                <td>
+                    {{ event.risk_score or 0 }}/100
+                </td>
+
+                <td>
+
+                    {% if event.severity == "HIGH_RISK" %}
+
+                        <span class="risk high">
+                            HIGH
+                        </span>
+
+                    {% elif event.severity == "MEDIUM_RISK" %}
+
+                        <span class="risk medium">
+                            MEDIUM
+                        </span>
+
+                    {% else %}
+
+                        <span class="risk normal">
+                            NORMAL
+                        </span>
+
+                    {% endif %}
+
+                </td>
+
+                <td>
+                    {{ event.reason }}
+                </td>
+
+                <td>
+                    {{ event.created_at }}
+                </td>
+
+                <td>
+
+                    {% if event.resolved %}
+
+                        <span class="resolved">
+                            Resolved
+                        </span>
+
+                    {% else %}
+
+                        <span class="unresolved">
+                            Pending
+                        </span>
+
+                    {% endif %}
+
+                </td>
+
+            </tr>
+
+        {% endfor %}
+
+        </tbody>
+
+    </table>
+
+    {% endif %}
+
+</div>
+
+</body>
+</html>

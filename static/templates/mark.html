@@ -1,61 +1,365 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Attendance</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Mark Attendance</title>
+
     <style>
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: Arial;
+            font-family: Arial, sans-serif;
             text-align: center;
-            margin-top: 100px;
+            margin: 0;
+            padding: 40px 20px;
+            background: #f5f5f5;
         }
+
+        .container {
+            max-width: 420px;
+            margin: 40px auto;
+            padding: 30px 20px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            margin-bottom: 10px;
+        }
+
+        p {
+            color: #555;
+        }
+
         input {
-            padding: 10px;
+            width: 100%;
+            padding: 14px;
             font-size: 18px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            margin-top: 10px;
         }
+
         button {
-            padding: 10px 20px;
+            width: 100%;
+            padding: 14px;
+            margin-top: 15px;
             font-size: 18px;
             background: green;
             color: white;
             border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            background: #aaa;
+            cursor: not-allowed;
+        }
+
+        #result {
+            margin-top: 20px;
+            font-size: 17px;
+            font-weight: bold;
+        }
+
+        .success {
+            color: green;
+        }
+
+        .error {
+            color: red;
+        }
+
+        .info {
+            font-size: 13px;
+            color: #777;
+            margin-top: 20px;
+            word-break: break-all;
         }
     </style>
 </head>
+
 <body>
 
-<h2>Scan Successful ✅</h2>
-<p>Enter your Student ID</p>
+<div class="container">
 
-<form id="form">
-    <input type="text" id="student_id" placeholder="Student ID" required>
-    <br><br>
-    <button type="submit">Mark Attendance</button>
-</form>
-<form method="POST">
-    <input type="hidden" name="token" value="{{ token }}">
-    <input type="text" name="student_id" placeholder="Enter ID">
-    <button type="submit">Submit</button>
-</form>
+    <h2>Attendance ✅</h2>
 
-<p id="result"></p>
+    <p>QR Code scanned successfully.</p>
+
+    <p>Enter your Student ID</p>
+
+    <form id="form">
+
+        <input
+            type="text"
+            id="student_id"
+            placeholder="Enter Student ID"
+            required
+            autocomplete="off"
+            autocapitalize="none"
+        >
+
+        <button type="submit" id="submitBtn">
+            Mark Attendance
+        </button>
+
+    </form>
+
+    <p id="result"></p>
+
+    <!-- Temporary debugging information -->
+    <p class="info" id="debugInfo"></p>
+
+</div>
+
 
 <script>
-const token = new URLSearchParams(window.location.search).get("token");
 
-document.getElementById("form").addEventListener("submit", async (e) => {
+const params = new URLSearchParams(window.location.search);
+
+const token = params.get("token");
+const version = params.get("version");
+window.__attendancePageOpenTime = Date.now();
+const deviceData = {
+    user_agent: navigator.userAgent || "",
+    platform: navigator.platform || "",
+    screen_width: window.screen.width || 0,
+    screen_height: window.screen.height || 0,
+    language: navigator.language || "",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+    device_type: /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
+        ? "mobile"
+        : "desktop",
+
+    // Timing
+    page_open_time: window.__attendancePageOpenTime || Date.now(),
+    submit_time: Date.now()
+};
+
+const form = document.getElementById("form");
+const submitBtn = document.getElementById("submitBtn");
+const resultEl = document.getElementById("result");
+const studentInput = document.getElementById("student_id");
+const debugInfo = document.getElementById("debugInfo");
+
+
+/*
+    Check that the QR supplied the required information.
+*/
+
+if (!token || !version) {
+
+    resultEl.textContent =
+        "Invalid QR code. Token or QR version is missing ❌";
+
+    resultEl.className = "error";
+
+    submitBtn.disabled = true;
+
+} else {
+
+    console.log("Token:", token);
+    console.log("QR Version:", version);
+
+    debugInfo.textContent =
+        "QR Version: " + version;
+}
+
+
+/*
+    Submit attendance
+*/
+
+form.addEventListener("submit", async function(e) {
+
     e.preventDefault();
 
-    const student_id = document.getElementById("student_id").value;
+    const student_id = document.getElementById("f_student_id").value.trim();
 
-    const res = await fetch("/mark-attendance", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ student_id, token })
-    });
+    if (!student_id) return;
 
-    const data = await res.json();
-    document.getElementById("result").innerText = data.message || data.error;
+    if (!navigator.geolocation) {
+        resultEl.textContent = "GPS is not supported on this device ❌";
+        resultEl.className = "error";
+        return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Getting location...";
+
+    navigator.geolocation.getCurrentPosition(
+        async (position) => {
+
+            const latitude = position.coords.latitude;
+            const longitude = position.coords.longitude;
+            const gps_accuracy = position.coords.accuracy;
+
+            submitBtn.textContent = "Submitting...";
+
+            await submitAttendance(
+                student_id,
+                latitude,
+                longitude,
+                gps_accuracy
+            );
+        },
+
+        (error) => {
+
+            console.error("GPS error:", error);
+
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Mark Attendance";
+
+            resultEl.textContent =
+                "Location permission is required to mark attendance ❌";
+
+            resultEl.className = "error";
+        },
+
+        {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+        }
+    );
+
+    const submitTime = Date.now();
+
+deviceData.submit_time = submitTime;
+
+deviceData.scan_to_submit_time =
+    (submitTime - deviceData.page_open_time) / 1000;
+
+deviceData.typing_time =
+    (submitTime - deviceData.page_open_time) / 1000;
+
+    if (!student_id) {
+
+        resultEl.textContent =
+            "Please enter your Student ID.";
+
+        resultEl.className = "error";
+
+        return;
+    }
+
+
+    /*
+        Disable button immediately.
+        This prevents accidental double submission.
+    */
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Submitting...";
+
+    resultEl.textContent = "";
+    resultEl.className = "";
+
+
+    try {
+
+        const response = await fetch("/mark-attendance", {
+
+            method: "POST",
+
+            headers: {
+                "Content-Type": "application/json"
+            },
+
+            body: JSON.stringify({
+                    student_id,
+                token,
+                version,
+                device_data: deviceData
+            })
+
+        });
+
+
+        /*
+            Try to read JSON response.
+        */
+
+        let data;
+
+        try {
+
+            data = await response.json();
+
+        } catch (jsonError) {
+
+            throw new Error(
+                "Server returned an invalid response."
+            );
+        }
+
+
+        /*
+            Attendance successful
+        */
+
+        if (response.ok) {
+
+            resultEl.textContent =
+                data.message ||
+                "Attendance marked successfully ✅";
+
+            resultEl.className = "success";
+
+            submitBtn.textContent = "Attendance Marked ✓";
+
+            submitBtn.disabled = true;
+
+            studentInput.disabled = true;
+
+        }
+
+
+        /*
+            Attendance rejected
+        */
+
+        else {
+
+            resultEl.textContent =
+                data.error ||
+                "Attendance could not be marked ❌";
+
+            resultEl.className = "error";
+
+            submitBtn.disabled = false;
+
+            submitBtn.textContent =
+                "Mark Attendance";
+        }
+
+
+    } catch (error) {
+
+        console.error("Attendance error:", error);
+
+        resultEl.textContent =
+            "Unable to connect to the attendance server. " +
+            "Check your network connection and try again ❌";
+
+        resultEl.className = "error";
+
+        submitBtn.disabled = false;
+
+        submitBtn.textContent =
+            "Mark Attendance";
+    }
+
 });
+
 </script>
 
 </body>
