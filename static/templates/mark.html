@@ -122,243 +122,145 @@
 
 <script>
 
-const params = new URLSearchParams(window.location.search);
-
-const token = params.get("token");
+const params  = new URLSearchParams(window.location.search);
+const token   = params.get("token");
 const version = params.get("version");
-window.__attendancePageOpenTime = Date.now();
-const deviceData = {
-    user_agent: navigator.userAgent || "",
-    platform: navigator.platform || "",
-    screen_width: window.screen.width || 0,
-    screen_height: window.screen.height || 0,
-    language: navigator.language || "",
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
-    device_type: /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
-        ? "mobile"
-        : "desktop",
 
-    // Timing
-    page_open_time: window.__attendancePageOpenTime || Date.now(),
-    submit_time: Date.now()
-};
+// Record when the page opened (used for timing features)
+const pageOpenTime = Date.now();
 
-const form = document.getElementById("form");
-const submitBtn = document.getElementById("submitBtn");
-const resultEl = document.getElementById("result");
+const form        = document.getElementById("form");
+const submitBtn   = document.getElementById("submitBtn");
+const resultEl    = document.getElementById("result");
 const studentInput = document.getElementById("student_id");
-const debugInfo = document.getElementById("debugInfo");
+const debugInfo   = document.getElementById("debugInfo");
 
-
-/*
-    Check that the QR supplied the required information.
-*/
-
+// Validate QR parameters on load
 if (!token || !version) {
-
-    resultEl.textContent =
-        "Invalid QR code. Token or QR version is missing ❌";
-
-    resultEl.className = "error";
-
-    submitBtn.disabled = true;
-
+    resultEl.textContent = "Invalid QR code. Token or version is missing ❌";
+    resultEl.className   = "error";
+    submitBtn.disabled   = true;
 } else {
-
-    console.log("Token:", token);
-    console.log("QR Version:", version);
-
-    debugInfo.textContent =
-        "QR Version: " + version;
+    debugInfo.textContent = "QR Version: " + version;
 }
 
-
-/*
-    Submit attendance
-*/
-
-form.addEventListener("submit", async function(e) {
-
+// ── Main submit handler ──────────────────────────────────────────────────────
+form.addEventListener("submit", function(e) {
     e.preventDefault();
 
-    const student_id = document.getElementById("f_student_id").value.trim();
+    const student_id = studentInput.value.trim();
 
-    if (!student_id) return;
-
-    if (!navigator.geolocation) {
-        resultEl.textContent = "GPS is not supported on this device ❌";
-        resultEl.className = "error";
+    if (!student_id) {
+        resultEl.textContent = "Please enter your Student ID.";
+        resultEl.className   = "error";
         return;
     }
 
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Getting location...";
+    if (!token || !version) {
+        resultEl.textContent = "Invalid QR code. Please scan again ❌";
+        resultEl.className   = "error";
+        return;
+    }
+
+    // Disable immediately to prevent double-tap
+    submitBtn.disabled   = true;
+    submitBtn.textContent = "Getting location…";
+    resultEl.textContent  = "";
+    resultEl.className    = "";
+
+    if (!navigator.geolocation) {
+        // No GPS support — submit without coordinates
+        submitAttendance(student_id, null, null, null);
+        return;
+    }
 
     navigator.geolocation.getCurrentPosition(
-        async (position) => {
-
-            const latitude = position.coords.latitude;
-            const longitude = position.coords.longitude;
-            const gps_accuracy = position.coords.accuracy;
-
-            submitBtn.textContent = "Submitting...";
-
-            await submitAttendance(
+        function(position) {
+            submitAttendance(
                 student_id,
-                latitude,
-                longitude,
-                gps_accuracy
+                position.coords.latitude,
+                position.coords.longitude,
+                position.coords.accuracy
             );
         },
-
-        (error) => {
-
-            console.error("GPS error:", error);
-
-            submitBtn.disabled = false;
-            submitBtn.textContent = "Mark Attendance";
-
-            resultEl.textContent =
-                "Location permission is required to mark attendance ❌";
-
-            resultEl.className = "error";
+        function(err) {
+            console.warn("GPS denied or unavailable:", err.message);
+            // Submit without coordinates rather than blocking the student
+            submitAttendance(student_id, null, null, null);
         },
-
-        {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
-        }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
+});
+
+// ── Attendance submission ────────────────────────────────────────────────────
+async function submitAttendance(student_id, latitude, longitude, gps_accuracy) {
+
+    submitBtn.textContent = "Submitting…";
 
     const submitTime = Date.now();
 
-deviceData.submit_time = submitTime;
+    const deviceData = {
+        user_agent:          navigator.userAgent  || "",
+        platform:            navigator.platform   || "",
+        screen_width:        window.screen.width  || 0,
+        screen_height:       window.screen.height || 0,
+        language:            navigator.language   || "",
+        timezone:            Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+        device_type:         /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? "mobile" : "desktop",
+        page_open_time:      pageOpenTime,
+        submit_time:         submitTime,
+        typing_time:         (submitTime - pageOpenTime) / 1000,
+        scan_to_submit_time: (submitTime - pageOpenTime) / 1000
+    };
 
-deviceData.scan_to_submit_time =
-    (submitTime - deviceData.page_open_time) / 1000;
-
-deviceData.typing_time =
-    (submitTime - deviceData.page_open_time) / 1000;
-
-    if (!student_id) {
-
-        resultEl.textContent =
-            "Please enter your Student ID.";
-
-        resultEl.className = "error";
-
-        return;
-    }
-
-
-    /*
-        Disable button immediately.
-        This prevents accidental double submission.
-    */
-
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Submitting...";
-
-    resultEl.textContent = "";
-    resultEl.className = "";
-
+    const payload = {
+        student_id:   student_id,
+        token:        token,
+        version:      parseInt(version, 10),
+        latitude:     latitude,
+        longitude:    longitude,
+        gps_accuracy: gps_accuracy,
+        device_data:  deviceData
+    };
 
     try {
-
         const response = await fetch("/mark-attendance", {
-
-            method: "POST",
-
-            headers: {
-                "Content-Type": "application/json"
-            },
-
-            body: JSON.stringify({
-                    student_id,
-                token,
-                version,
-                device_data: deviceData
-            })
-
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify(payload)
         });
 
-
-        /*
-            Try to read JSON response.
-        */
-
         let data;
-
         try {
-
             data = await response.json();
-
-        } catch (jsonError) {
-
-            throw new Error(
-                "Server returned an invalid response."
-            );
+        } catch (jsonErr) {
+            throw new Error("Server returned an invalid response.");
         }
-
-
-        /*
-            Attendance successful
-        */
 
         if (response.ok) {
-
-            resultEl.textContent =
-                data.message ||
-                "Attendance marked successfully ✅";
-
-            resultEl.className = "success";
-
+            // Success
+            resultEl.textContent  = data.message || "Attendance marked successfully ✅";
+            resultEl.className    = "success";
             submitBtn.textContent = "Attendance Marked ✓";
-
-            submitBtn.disabled = true;
-
+            submitBtn.disabled    = true;
             studentInput.disabled = true;
 
+        } else {
+            // Server returned an error (4xx / 5xx)
+            resultEl.textContent  = data.error || "Attendance could not be marked ❌";
+            resultEl.className    = "error";
+            submitBtn.disabled    = false;
+            submitBtn.textContent = "Mark Attendance";
         }
 
-
-        /*
-            Attendance rejected
-        */
-
-        else {
-
-            resultEl.textContent =
-                data.error ||
-                "Attendance could not be marked ❌";
-
-            resultEl.className = "error";
-
-            submitBtn.disabled = false;
-
-            submitBtn.textContent =
-                "Mark Attendance";
-        }
-
-
-    } catch (error) {
-
-        console.error("Attendance error:", error);
-
-        resultEl.textContent =
-            "Unable to connect to the attendance server. " +
-            "Check your network connection and try again ❌";
-
-        resultEl.className = "error";
-
-        submitBtn.disabled = false;
-
-        submitBtn.textContent =
-            "Mark Attendance";
+    } catch (networkErr) {
+        console.error("Attendance error:", networkErr);
+        resultEl.textContent  = "Could not reach the server. Check your connection and try again ❌";
+        resultEl.className    = "error";
+        submitBtn.disabled    = false;
+        submitBtn.textContent = "Mark Attendance";
     }
-
-});
+}
 
 </script>
 

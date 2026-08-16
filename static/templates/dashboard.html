@@ -190,37 +190,42 @@ function handleAuthError(res) {
 }
 
 function startSession() {
+    document.getElementById("timer").innerHTML = "Starting session…";
+    document.getElementById("qrImage").style.display = "none";
+
     fetch('/start-session')
     .then(res => {
-        if (handleAuthError(res)) return;
+        if (handleAuthError(res)) return null;
         return res.json();
     })
     .then(data => {
         if (!data) return;
 
-        const qr = document.getElementById("qrImage");
-        if (data.qr_code) {
-            let qrVersion = 1;
-
-qr.src = "/static/qrcodes/qr_1.png?t=" + Date.now();
-
-const qrRotationTimer = setInterval(() => {
-
-    qrVersion++;
-
-    if (qrVersion > 6) {
-        clearInterval(qrRotationTimer);
-        return;
-    }
-
-    qr.src = `/static/qrcodes/qr_${qrVersion}.png?t=${Date.now()}`;
-
-}, 20000);
-            qr.style.display = "block";
+        if (!data.success) {
+            document.getElementById("timer").innerHTML =
+                "Failed to start session: " + (data.error || "Unknown error");
+            return;
         }
 
+        // ── QR display ──────────────────────────────────────────────────────
+        const qr = document.getElementById("qrImage");
+        let qrVersion = 1;
+        qr.src = "/static/qrcodes/qr_1.png?t=" + Date.now();
+        qr.style.display = "block";
+
+        // Rotate QR every 50 seconds to match server rotation worker
+        const qrRotationTimer = setInterval(() => {
+            qrVersion++;
+            if (qrVersion > 6) {
+                clearInterval(qrRotationTimer);
+                return;
+            }
+            qr.src = "/static/qrcodes/qr_" + qrVersion + ".png?t=" + Date.now();
+        }, 50000);
+
+        // ── PIN display ──────────────────────────────────────────────────────
         const pinContainer = document.getElementById("pinContainer");
-        const sessionPin = document.getElementById("sessionPin");
+        const sessionPin   = document.getElementById("sessionPin");
         if (data.pin) {
             sessionPin.textContent = data.pin;
             pinContainer.style.display = "block";
@@ -228,36 +233,49 @@ const qrRotationTimer = setInterval(() => {
             pinContainer.style.display = "none";
         }
 
-        let expiryTime = new Date(data.expires_at);
-
-        if (isNaN(expiryTime.getTime())) {
+        // ── Countdown from server-provided expires_at ────────────────────────
+        if (!data.expires_at) {
             document.getElementById("timer").innerHTML = "Timer error ❌";
             return;
         }
 
-        setInterval(() => {
-            qr.src = "/static/qrcodes/current_qr.png?t=" + Date.now();
-        }, 20000);
+        // Parse the ISO string the server returns.
+        // datetime.now().isoformat() produces a naive local-time string
+        // (no Z / offset).  new Date() treats that as LOCAL time, which
+        // is what we want for a comparison against Date.now().
+        const expiryTime = new Date(data.expires_at);
 
-        let expiry = expiryTime.getTime();
+        if (isNaN(expiryTime.getTime())) {
+            document.getElementById("timer").innerHTML =
+                "Timer error (could not parse expiry) ❌";
+            return;
+        }
 
-        let x = setInterval(function () {
-            let now = new Date().getTime();
-            let distance = expiry - now;
+        const expiry = expiryTime.getTime();
+
+        const countdownTimer = setInterval(function () {
+            const distance = expiry - Date.now();
 
             if (distance <= 0) {
-                clearInterval(x);
-                document.getElementById("timer").innerHTML = "QR EXPIRED ❌";
+                clearInterval(countdownTimer);
+                clearInterval(qrRotationTimer);
+                document.getElementById("timer").innerHTML = "Session EXPIRED ❌";
                 return;
             }
 
-            let minutes = Math.floor(distance / 60000);
-            let seconds = Math.floor((distance % 60000) / 1000);
+            const minutes = Math.floor(distance / 60000);
+            const seconds = Math.floor((distance % 60000) / 1000);
 
             document.getElementById("timer").innerHTML =
-                `QR expires in: ${minutes}m ${seconds}s`;
-
+                "Session expires in: " +
+                String(minutes).padStart(2, "0") + ":" +
+                String(seconds).padStart(2, "0");
         }, 1000);
+    })
+    .catch(err => {
+        document.getElementById("timer").innerHTML =
+            "Network error starting session ❌";
+        console.error("startSession error:", err);
     });
 }
 
@@ -266,37 +284,17 @@ function exportData() {
 }
 
 async function loadDashboardStats(){
-
     try{
-
         const res = await fetch("/dashboard-stats");
         const data = await res.json();
-
         if(!data.success) return;
-
-        document.getElementById("totalStudents").textContent =
-            data.total_students;
-
-        document.getElementById("totalSessions").textContent =
-            data.total_sessions;
-
-        document.getElementById("totalAttendance").textContent =
-            data.total_attendance;
-
-        document.getElementById("activeSession").textContent =
-            data.active_session ? "Yes" : "No";
-
-        document.getElementById("lastSession").textContent =
-            data.last_session || "None";
-
+        document.getElementById("totalStudents").textContent  = data.total_students;
+        document.getElementById("totalSessions").textContent  = data.total_sessions;
+        document.getElementById("totalAttendance").textContent = data.total_attendance;
+        document.getElementById("activeSession").textContent  = data.active_session ? "Yes" : "No";
+        document.getElementById("lastSession").textContent    = data.last_session || "None";
     }
-
-    catch(err){
-
-        console.log(err);
-
-    }
-
+    catch(err){ console.log(err); }
 }
 
 loadDashboardStats();
