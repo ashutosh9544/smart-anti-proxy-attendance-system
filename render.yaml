@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: smart-anti-proxy-attendance
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.5

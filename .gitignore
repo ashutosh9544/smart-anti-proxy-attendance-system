@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Environment variables
+.env
+
+# VS Code
+.vscode/
+
+# SQLite
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated QR codes
+static/qrcodes/*
+
+# Python cache
+.pytest_cache/
+
+# ML temporary files
+models/__pycache__/
+ml/__pycache__/
+
+# OS files
+.DS_Store
+Thumbs.db
