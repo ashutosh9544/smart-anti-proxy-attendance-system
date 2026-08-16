@@ -1139,7 +1139,7 @@ def export_attendance():
 @app.route("/init-db")
 @login_required
 def initialize_database():
-    init_db()
+    #init_db()
     return "Database initialized ✅"
 
 
