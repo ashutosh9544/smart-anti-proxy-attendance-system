@@ -635,6 +635,98 @@ def dashboard():
     return render_template("dashboard.html", teacher_name=flask_session.get("teacher_name", ""))
 
 
+@app.route("/start-session", methods=["GET"])
+@login_required
+def start_session():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        # Deactivate old sessions
+        cursor.execute("UPDATE sessions SET active = 0 WHERE active = 1")
+
+        # Create session token
+        token = str(uuid.uuid4())
+
+        # Generate PIN
+        pin = f"{random.randint(1000, 9999)}"
+
+        # Initial values
+        start_time = datetime.now().isoformat()
+        current_qr_version = 1
+
+        # Create session first
+        cursor.execute("""
+            INSERT INTO sessions (
+                start_time,
+                end_time,
+                active,
+                token,
+                expires_at,
+                pin,
+                current_qr_version,
+                last_qr_generated
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            start_time,
+            None,
+            1,
+            token,
+            None,
+            pin,
+            current_qr_version,
+            None
+        ))
+
+        conn.commit()
+
+        session_id = cursor.lastrowid
+
+        # Generate QR BEFORE starting the expiry timer
+        qr_paths = generate_all_qrs(session_id)
+
+        # Start the actual attendance validity period
+        expiry_time = datetime.now() + timedelta(minutes=5)
+        expires_at = expiry_time.isoformat()
+
+        # Update session with final expiry
+        cursor.execute("""
+            UPDATE sessions
+            SET end_time = ?,
+                expires_at = ?,
+                last_qr_generated = ?
+            WHERE id = ?
+        """, (
+            expires_at,
+            expires_at,
+            datetime.now().isoformat(),
+            session_id
+        ))
+
+        conn.commit()
+
+        # Start QR rotation
+        threading.Thread(
+            target=qr_rotation_worker,
+            args=(session_id,),
+            daemon=True
+        ).start()
+
+        return jsonify({
+            "success": True,
+            "message": "Session started ✅",
+            "session_id": session_id,
+            "token": token,
+            "qr_code": qr_paths[0] if qr_paths else None,
+            "expires_at": expires_at,
+            "pin": pin
+        })
+
+    finally:
+        conn.close()
+
+
 @app.route("/manage-students")
 @login_required
 def manage_students():
@@ -805,29 +897,31 @@ def generate_all_qrs(session_id):
         if session is None:
             return []
 
-        hostname = socket.gethostname()
-        local_ip = socket.gethostbyname(hostname)
-
-        os.makedirs("static/qrcodes", exist_ok=True)
+        # Make sure QR directory exists
+        os.makedirs(QRCODE_DIR, exist_ok=True)
 
         qr_paths = []
 
-        # Generate all 6 QR codes in advance
+        # Generate 6 rolling QR codes
         for version in range(1, 7):
 
             qr_data = (
-                f"http://{local_ip}:5000/mark"
+                f"/mark"
                 f"?token={session['token']}"
                 f"&version={version}"
             )
 
-            file_path = f"static/qrcodes/qr_{version}.png"
+            file_path = os.path.join(
+                QRCODE_DIR,
+                f"qr_{version}.png"
+            )
 
             img = qrcode.make(qr_data)
             img.save(file_path)
 
             qr_paths.append(file_path)
 
+        # Start with QR version 1
         cursor.execute("""
             UPDATE sessions
             SET current_qr_version = 1,
@@ -845,17 +939,28 @@ def generate_all_qrs(session_id):
     finally:
         conn.close()
 
-
 def qr_rotation_worker(session_id):
+    """
+    Rotates the QR version every 20 seconds.
+
+    The attendance session itself remains valid until
+    sessions.expires_at is reached.
+    """
+
     while True:
-        time.sleep(20)
+
+        # Rotate QR every 20 seconds
+        time.sleep(50)
 
         conn = get_db_connection()
         cursor = conn.cursor()
 
         try:
             cursor.execute("""
-                SELECT active, expires_at, current_qr_version
+                SELECT
+                    active,
+                    expires_at,
+                    current_qr_version
                 FROM sessions
                 WHERE id = ?
             """, (session_id,))
@@ -865,10 +970,16 @@ def qr_rotation_worker(session_id):
             if session is None:
                 break
 
+            # Session manually stopped
             if session["active"] == 0:
                 break
 
-            if datetime.now() >= datetime.fromisoformat(session["expires_at"]):
+            # Session expired
+            if (
+                session["expires_at"] is not None
+                and datetime.now() >=
+                datetime.fromisoformat(session["expires_at"])
+            ):
                 cursor.execute("""
                     UPDATE sessions
                     SET active = 0
@@ -878,8 +989,9 @@ def qr_rotation_worker(session_id):
                 conn.commit()
                 break
 
-            current_version = session["current_qr_version"]
+            current_version = session["current_qr_version"] or 1
 
+            # We have only generated 6 QR versions
             if current_version >= 6:
                 break
 
@@ -898,7 +1010,14 @@ def qr_rotation_worker(session_id):
 
             conn.commit()
 
+            logger.info(
+                "QR rotated: session=%s version=%s",
+                session_id,
+                new_version
+            )
+
         except sqlite3.Error as e:
+
             logger.error(
                 "QR rotation error for session %s: %s",
                 session_id,
@@ -910,73 +1029,9 @@ def qr_rotation_worker(session_id):
         finally:
             conn.close()
 
-@app.route("/start-session", methods=["GET"])
-@login_required
-def start_session():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    try:
-        # Deactivate old sessions
-        cursor.execute("UPDATE sessions SET active = 0 WHERE active = 1")
-
-        # Create new session
-        token = str(uuid.uuid4())
-        start_time = datetime.now().isoformat()
-
-        expiry_time = datetime.now() + timedelta(minutes=2)
-        expires_at = expiry_time.isoformat()
-
-        end_time= expires_at
-        current_qr_version = 1
-        pin = f"{random.randint(1000, 9999)}"
-
-        cursor.execute("""
-        INSERT INTO sessions (
-        start_time,
-        end_time,
-        active,
-        token,
-        expires_at,
-        pin,
-        current_qr_version,
-        last_qr_generated
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-        start_time,
-        end_time,
-        1,
-        token,
-        expires_at,
-        pin,
-        current_qr_version,
-        datetime.now().isoformat()
-        ))
-        conn.commit()
-
-        session_id = cursor.lastrowid
-
-        qr_paths = generate_all_qrs(session_id)
-
-        threading.Thread(
-            target=qr_rotation_worker,
-            args=(session_id,),
-            daemon=True
-        ).start()
 
 
-        return jsonify({
-            "success": True,
-            "message": "Session started ✅",
-            "session_id": session_id,
-            "token": token,
-            "qr_code": qr_paths[0] if qr_paths else None,
-            "expires_at": expiry_time.isoformat(),
-            "pin": pin
-        })
-    finally:
-        conn.close()
+
 
 
 @app.route("/resolve-suspicious/<int:event_id>", methods=["POST"])
