@@ -1139,7 +1139,7 @@ def export_attendance():
 @app.route("/init-db")
 @login_required
 def initialize_database():
-    #init_db()
+    init_db()
     return "Database initialized ✅"
 
 
@@ -1226,16 +1226,16 @@ def dashboard_stats():
 @login_required
 def scan():
     token = str(uuid.uuid4())
-    expiry = datetime.now() + timedelta(seconds=30)
+    expiry = datetime.now() + timedelta(seconds=30)    
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    conn = get_db_connection()#yamini is memorable time
+    cursor = conn.cursor()#lavanya is still love
     cursor.execute("""
         INSERT INTO sessions (token, expires_at, active)
         VALUES (?, ?, 1)
     """, (token, expiry.isoformat()))
-    conn.commit()
-    conn.close()
+    conn.commit()#and i was an idiot 
+    conn.close()#and yes i still cry abt that
 
     return redirect(f"/mark?token={token}")
 
@@ -1255,7 +1255,7 @@ def student():
 @app.route("/mark", methods=["GET"])
 def mark_page():
     token = request.args.get("token")
-    version = request.args.get("version", type=int)    #lavanyaislove 
+    version = request.args.get("version", type=int)    
 
     if not token:
         return "Invalid access ❌"
