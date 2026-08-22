@@ -1310,7 +1310,7 @@ def student():
 @app.route("/mark", methods=["GET"])
 def mark_page():
     token = request.args.get("token")
-    version = request.args.get("version", type=int)    
+    version = request.args.get("version", type=int)
 
     if not token:
         return "Invalid access ❌"
@@ -1319,25 +1319,49 @@ def mark_page():
     cursor = conn.cursor()
 
     try:
-        cursor.execute("SELECT * FROM sessions WHERE token = ?", (token,))
+        cursor.execute(
+            "SELECT * FROM sessions WHERE token = ?",
+            (token,)
+        )
+
         session = cursor.fetchone()
 
         if not session:
             return "Invalid token ❌"
 
-        if not session["expires_at"] or datetime.now() > datetime.fromisoformat(session["expires_at"]):
-            cursor.execute("UPDATE sessions SET active = 0 WHERE id = ?", (session["id"],))
+        # Check session expiry using UTC
+        if (
+            not session["expires_at"]
+            or datetime.now(timezone.utc)
+            > datetime.fromisoformat(session["expires_at"])
+        ):
+            cursor.execute(
+                "UPDATE sessions SET active = 0 WHERE id = ?",
+                (session["id"],)
+            )
             conn.commit()
+
             return "Session expired ❌"
 
+        # Check whether session is still active
         if session["active"] == 0:
             return "Session is no longer active ❌"
 
+        # Validate rolling QR version
         current_qr_version = session["current_qr_version"]
-        if version is None or version != current_qr_version:
+
+        if (
+            version is None
+            or version != current_qr_version
+        ):
             return "QR Code has expired. Please scan the latest QR. ❌"
 
-        return render_template("mark.html", token=token, version=current_qr_version)
+        return render_template(
+            "mark.html",
+            token=token,
+            version=current_qr_version
+        )
+
     finally:
         conn.close()
 
