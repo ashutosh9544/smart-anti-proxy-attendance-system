@@ -1275,7 +1275,8 @@ def dashboard_stats():
 
     finally:
         conn.close()
-
+#hey its 18-9-26 and i am falling for her just kind of i dont knowww but _ _ _ _ plese dont make me do this...........
+#1 month if every thing will fine ,and got enough feelings for her i am gone confess to herr idk how but before 18-10-26 she will gona know thiss,that i am fallingg
 
 @app.route("/scan")
 @login_required
@@ -1283,8 +1284,8 @@ def scan():
     token = str(uuid.uuid4())
     expiry = datetime.now() + timedelta(seconds=30)    
 
-    conn = get_db_connection()#yamini is memorable time
-    cursor = conn.cursor()#lavanya is still love
+    conn = get_db_connection()
+    cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO sessions (token, expires_at, active)
         VALUES (?, ?, 1)
